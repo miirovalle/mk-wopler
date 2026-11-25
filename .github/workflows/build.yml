@@ -1,0 +1,62 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # The DSP core has no framework dependencies, so it builds and runs everywhere.
+  dsp-tests:
+    name: DSP core tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build-test -DWOB_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build-test --config Release --target wobble_tests --parallel
+      - name: Run
+        run: ctest --test-dir build-test --build-config Release --output-on-failure
+
+  # AUv3 is the only format iPadOS loads, so the Apple build is the important one.
+  apple:
+    name: Apple formats (AUv3 / AU / VST3)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G Xcode -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: |
+          cmake --build build --config Release \
+            --target MKWOPLER_AUv3 MKWOPLER_AU MKWOPLER_VST3 --parallel
+      - name: Upload AUv3
+        uses: actions/upload-artifact@v4
+        with:
+          name: MKWOPLER-AUv3-macOS
+          path: build/MKWOPLER_artefacts/Release/AUv3/*.appex
+          if-no-files-found: warn
+
+  # The iPadOS build lives in .github/workflows/ios-ipa.yml, which both compiles
+  # for iOS and packages an installable .ipa.
+
+  windows:
+    name: Windows formats (VST3 / Standalone)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build
+      - name: Build
+        run: cmake --build build --config Release --target MKWOPLER_VST3 MKWOPLER_Standalone --parallel
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: MKWOPLER-VST3-Windows
+          path: build/MKWOPLER_artefacts/Release/VST3/MK WOPLER.vst3

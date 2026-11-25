@@ -1,0 +1,14 @@
+# Build artefacts
+build/
+build-*/
+External/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+CMakeUserPresets.json
+
+# Rendered test output
+*.wav
