@@ -11,21 +11,29 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "macOS deployment target")
 #
 # Point JUCE_PATH at an existing checkout, or let FetchContent grab it.
 # ---------------------------------------------------------------------------
-if(NOT DEFINED JUCE_PATH)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/JUCE/CMakeLists.txt")
-        set(JUCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/External/JUCE")
-    else()
-        include(FetchContent)
-        FetchContent_Declare(JUCE
-            GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-            GIT_TAG        8.0.9
-            GIT_SHALLOW    TRUE)
-        FetchContent_MakeAvailable(JUCE)
-        set(JUCE_PATH "${juce_SOURCE_DIR}")
-    endif()
+# ---------------------------------------------------------------------------
+# JUCE
+#
+# Point JUCE_PATH at an existing checkout, or let FetchContent grab it.
+# FetchContent_MakeAvailable() already performs its own add_subdirectory(), so
+# the two branches must not both add JUCE or CMake rejects the duplicate binary
+# directory. CI has no External/JUCE (it is gitignored), so it takes the
+# FetchContent branch.
+# ---------------------------------------------------------------------------
+if(NOT DEFINED JUCE_PATH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/JUCE/CMakeLists.txt")
+    set(JUCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/External/JUCE")
 endif()
 
-add_subdirectory("${JUCE_PATH}" JUCE)
+if(DEFINED JUCE_PATH)
+    add_subdirectory("${JUCE_PATH}" JUCE)
+else()
+    include(FetchContent)
+    FetchContent_Declare(JUCE
+        GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+        GIT_TAG        8.0.9
+        GIT_SHALLOW    TRUE)
+    FetchContent_MakeAvailable(JUCE)
+endif()
 
 # ---------------------------------------------------------------------------
 # Plugin formats
