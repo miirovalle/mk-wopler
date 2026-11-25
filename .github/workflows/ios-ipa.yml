@@ -43,7 +43,7 @@ jobs:
   # ---------------------------------------------------------------------------
   unsigned-ipa:
     name: Unsigned IPA
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -116,7 +116,7 @@ jobs:
   signed-ipa:
     name: Signed IPA
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_signed }}
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
