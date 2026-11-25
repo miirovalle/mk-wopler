@@ -56,6 +56,7 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT="${IOS_SDK}" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}" \
+            -DCMAKE_XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}" \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
@@ -66,7 +67,7 @@ jobs:
           cmake --build build-ios --config Release \
             --target "${IOS_TARGET}" --parallel
 
-      - name: Package IPA
+      - name: Verify the bundle is iPadOS 17 and contains a real AUv3
         run: |
           set -euo pipefail
           APP_PATH="$(find build-ios -type d -name '*.app' -not -path '*/Simulator/*' | head -n 1)"
@@ -79,20 +80,54 @@ jobs:
 
           APPEX_COUNT="$(find "${APP_PATH}/PlugIns" -maxdepth 1 -name '*.appex' -type d 2>/dev/null | wc -l | tr -d ' ')"
           echo "Embedded app extensions: ${APPEX_COUNT}"
-          find "${APP_PATH}/PlugIns" -maxdepth 1 -name '*.appex' >&2 || true
           if [ "${APPEX_COUNT}" = "0" ]; then
             echo "The AUv3 extension is missing from the app bundle" >&2
             exit 1
           fi
+          APPEX_PATH="$(find "${APP_PATH}/PlugIns" -maxdepth 1 -name '*.appex' -type d | head -n 1)"
+          echo "Extension bundle: ${APPEX_PATH}"
 
-          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' \
-            "${APP_PATH}/PlugIns/"*.appex/Info.plist || true
+          # Deployment target must be iPadOS 17, or the plugin will refuse to
+          # load on iPadOS 17 even though it builds.
+          MIN_OS="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "${APP_PATH}/Info.plist")"
+          APPEX_MIN_OS="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "${APPEX_PATH}/Info.plist")"
+          echo "MinimumOSVersion: app=${MIN_OS} extension=${APPEX_MIN_OS}"
+          if [ "${MIN_OS}" != "${IOS_DEPLOYMENT_TARGET}" ] || [ "${APPEX_MIN_OS}" != "${IOS_DEPLOYMENT_TARGET}" ]; then
+            echo "Expected a ${IOS_DEPLOYMENT_TARGET} deployment target" >&2
+            exit 1
+          fi
+
+          # Family 2 is iPad. Without it the bundle is iPhone-only.
+          FAMILIES="$(plutil -extract UIDeviceFamily json -o - "${APP_PATH}/Info.plist")"
+          echo "UIDeviceFamily: ${FAMILIES}"
+          case "${FAMILIES}" in
+            *2*) ;;
+            *) echo "Bundle is not iPad-capable" >&2; exit 1 ;;
+          esac
+
+          # This is what makes it an AUv3 rather than any other extension kind.
+          POINT_ID="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "${APPEX_PATH}/Info.plist")"
+          echo "NSExtensionPointIdentifier: ${POINT_ID}"
+          if [ "${POINT_ID}" != "com.apple.AudioUnit-UI" ]; then
+            echo "Extension is not an AUv3 audio unit" >&2
+            exit 1
+          fi
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build-ios -type d -name '*.app' -not -path '*/Simulator/*' | head -n 1)"
+          if [ -z "${APP_PATH}" ]; then
+            echo "No .app bundle was produced" >&2
+            exit 1
+          fi
 
           rm -rf Payload MK-WOPLER-unsigned.ipa
           mkdir -p Payload
           cp -R "${APP_PATH}" Payload/
           zip -qry MK-WOPLER-unsigned.ipa Payload
           ls -lh MK-WOPLER-unsigned.ipa
+          unzip -l MK-WOPLER-unsigned.ipa | head -n 20
 
       - uses: actions/upload-artifact@v4
         with:
