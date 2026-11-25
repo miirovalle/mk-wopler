@@ -4,13 +4,24 @@ project(MKWOPLER VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "macOS deployment target")
 
-# ---------------------------------------------------------------------------
-# JUCE
-#
-# Point JUCE_PATH at an existing checkout, or let FetchContent grab it.
-# ---------------------------------------------------------------------------
+# JUCE builds its juceaide host tool by re-invoking CMake and forwards
+# CMAKE_OSX_DEPLOYMENT_TARGET to that macOS configure. Passing an iOS value such
+# as 17.0 therefore asks for a macOS binary for a macOS version that does not
+# exist, and the tool build dies with "No CMAKE_C_COMPILER could be found".
+# Only ever default the macOS deployment target here; iOS is configured through
+# IPHONEOS_DEPLOYMENT_TARGET instead.
+if(NOT IOS AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "macOS deployment target")
+endif()
+
+option(WOB_BUILD_PLUGIN "Build the AUv3/VST3 plugin targets" ON)
+option(WOB_BUILD_TESTS "Build the offline DSP test harness" ON)
+
+# Everything plugin related is optional so the DSP harness can be configured on
+# a machine without JUCE, GUI libraries or audio development packages.
+if(WOB_BUILD_PLUGIN)
+
 # ---------------------------------------------------------------------------
 # JUCE
 #
@@ -122,11 +133,11 @@ if(DEFINED WOB_AUV3_PROVISIONING_PROFILE AND TARGET MKWOPLER_AUv3)
         XCODE_ATTRIBUTE_PROVISIONING_PROFILE_SPECIFIER "${WOB_AUV3_PROVISIONING_PROFILE}")
 endif()
 
+endif() # WOB_BUILD_PLUGIN
+
 # ---------------------------------------------------------------------------
 # Offline test harness for the DSP core (no plugin framework required).
 # ---------------------------------------------------------------------------
-option(WOB_BUILD_TESTS "Build the offline DSP test harness" ON)
-
 if(WOB_BUILD_TESTS)
     add_executable(wobble_tests
         Tests/test_dsp.cpp
